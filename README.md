@@ -1,6 +1,6 @@
 # bos-workspace (ALPHA)
 
-bos-workspace is a toolset to help ease the development of bOS widgets. It works like a monorepo, allowing you to develop multiple bos apps in the same time. It also provides a build script to help with the development process.
+bos-workspace is a toolset to help ease the development of bOS widgets. It works like a monorepo, allowing you to develop multiple bos workspaces in the same time. It also provides a build script to help with the development process.
 
 ## Introduction
 
@@ -13,8 +13,8 @@ npm install -g bos-workspace
 Then, create a new folder with the following structure:
 
 ```
-- apps
-  - {appname}
+- workspaces
+  - {workspaceName}
     - bos.config.json
     - widget
         - (your widgets codes with any folder structure)
@@ -23,9 +23,9 @@ Then, create a new folder with the following structure:
   - (any folder structure)
 ```
 
-- The `apps` folder is where you store your apps. Each app has its own folder, and each app folder has a `bos.config.json` file.
-- The `apps/{appname}/widget` folder is where you store your widgets. You can have any folder structure inside the `widget` folder.
-- The `jsonc` files under `apps/{appname}` folder are used to create a data.json, that is used to store data under SocialDB.
+- The `workspaces` folder is where you store your workspaces. Each app has its own folder, and each app folder has a `bos.config.json` file.
+- The `workspaces/{workspaceName}/widget` folder is where you store your widgets. You can have any folder structure inside the `widget` folder.
+- The `jsonc` files under `workspaces/{workspaceName}` folder are used to create a data.json, that is used to store data under SocialDB.
 - The `modules` folder is where you store your modules. You can have any folder structure inside the `modules` folder.
 
 ### Commands
@@ -56,7 +56,7 @@ Commands:
 
 ### 1. **App Configuration**
 
-In the `bos.config.json` file, you can specify the app account. It will be used as for development and deployment. And the build script will replace the `/*__@appAccount__*/` comment with the app account.
+In the `bos.config.json` file, you can specify the app account. It will be used as for development and deployment. And the build script will replace the `/*__@creatorAccount__*/` comment with the app account.
 
 ### 2. **Alias Mapping**
 
@@ -86,13 +86,13 @@ The build script will exclude files that have `/*__@skip__*/` comment.
 
 ### 5. **Data.json**
 
-The build script will create a `data.json` file based on the `jsonc` and `txt` files under `apps/{appname}` folder. The `data.json` file will be used to store data under SocialDB.
+The build script will create a `data.json` file based on the `jsonc` and `txt` files under `workspaces/{workspaceName}` folder. The `data.json` file will be used to store data under SocialDB.
 
 For instance, consider the following structure:
 
 ```
-- apps
-- {appname}
+- workspaces
+- {workspaceName}
     - something.txt
     - types
     - ui

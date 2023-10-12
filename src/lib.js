@@ -7,9 +7,34 @@ const express = require("express");
 const { execSync } = require("child_process");
 const readline = require("readline");
 
-// read bos.config.json from app folders
+// get network account from creatorAccount
+function getNetworkAccount(creatorAccount) {
+  if (!creatorAccount) {
+    return null;
+  }
+
+  if (typeof creatorAccount !== "object") {
+    return creatorAccount;
+  }
+
+  let networkId = process.env.NETWORK_ID || "mainnet"; // default to mainnet
+  const account = creatorAccount[networkId];
+
+  if (!account) {
+    console.error(`${networkId} value is not specified in creatorAccount.`);
+    return null;
+  }
+
+  return account;
+}
+
+// read bos.config.json from workspace folders
 function readBosConfig(workspaceFolder) {
-  const configPath = path.join("./workspaces", workspaceFolder, "bos.config.json");
+  const configPath = path.join(
+    "./workspaces",
+    workspaceFolder,
+    "bos.config.json"
+  );
   if (!fs.existsSync(configPath)) {
     throw new Error(`bos.config.json not found in ${workspaceFolder}`);
   }
@@ -17,7 +42,9 @@ function readBosConfig(workspaceFolder) {
   try {
     JSON.parse(configRaw);
   } catch (e) {
-    throw new Error(`${workspaceFolder}/bos.config.json is not a valid json file`);
+    throw new Error(
+      `${workspaceFolder}/bos.config.json is not a valid json file`
+    );
   }
   const config = JSON.parse(configRaw);
   if (!config.creatorAccount) {
@@ -38,10 +65,11 @@ function processCommentCommands(fileContent, aliases, creatorAccount) {
     }
   }
 
-  // Replace the creatorAccount
-  if (creatorAccount) {
-    let accountPattern = /\/\*__@creatorAccount__\*\//g;
-    fileContent = fileContent.replace(accountPattern, creatorAccount);
+  let accountPattern = /\/\*__@creatorAccount__\*\//g;
+  let account = getNetworkAccount(creatorAccount);
+
+  if (account) {
+    fileContent = fileContent.replace(accountPattern, account);
   }
 
   return fileContent;
@@ -79,7 +107,7 @@ function processFile(filePath, aliases, creatorAccount) {
   fs.writeFileSync(filePath, fileContent);
 }
 
-// walk through each app folder
+// walk through each workspace folder
 function processDistFolder(workspaceFolder) {
   const files = glob.sync(
     `./${distFolder}/${workspaceFolder}/**/*.{js,jsx,ts,tsx,json}`
@@ -87,7 +115,9 @@ function processDistFolder(workspaceFolder) {
 
   const config = readBosConfig(workspaceFolder);
 
-  files.forEach((file) => processFile(file, config.aliases, config.creatorAccount));
+  files.forEach((file) =>
+    processFile(file, config.aliases, config.creatorAccount)
+  );
 }
 
 // generate the dist folder structure
@@ -98,7 +128,9 @@ function generateDistFolder(workspaceFolder) {
   }
   fs.mkdirSync(distPath, { recursive: true });
 
-  const files = glob.sync(`./workspaces/${workspaceFolder}/widget/**/*.{js,jsx,ts,tsx}`);
+  const files = glob.sync(
+    `./workspaces/${workspaceFolder}/widget/**/*.{js,jsx,ts,tsx}`
+  );
   files.forEach((file) => {
     const distFilePath = file
       .replace(workspaceFolder + "/widget", workspaceFolder + "/src")
@@ -154,7 +186,9 @@ function generateDataJson(workspaceFolder) {
         fileContent = removeComments(fileContent).replace(/\s/g, ""); // remove comments and spaces
       }
     }
-    const keys = file.replace(`./workspaces/${workspaceFolder}/`, "").split("/");
+    const keys = file
+      .replace(`./workspaces/${workspaceFolder}/`, "")
+      .split("/");
     // remove file extension
     keys[keys.length - 1] = keys[keys.length - 1]
       .split(".")
@@ -186,8 +220,8 @@ function generateDataJson(workspaceFolder) {
 function generateDevJson(workspaceFolder) {
   let devJson = { components: {}, data: {} };
 
-  const appConfig = readBosConfig(workspaceFolder);
-  if (!appConfig.creatorAccount) {
+  const workspaceConfig = readBosConfig(workspaceFolder);
+  if (!workspaceConfig.creatorAccount) {
     return devJson;
   }
   const widgetFiles = glob.sync(
@@ -196,7 +230,14 @@ function generateDevJson(workspaceFolder) {
   const dataJSON = JSON.parse(
     fs.readFileSync(`./${distFolder}/${workspaceFolder}/data.json`, "utf8")
   );
-  devJson.data = { [appConfig.creatorAccount]: dataJSON };
+
+  let creatorAccount = getNetworkAccount(workspaceConfig.creatorAccount);
+
+  if (!creatorAccount) {
+    return devJson;
+  }
+
+  devJson.data = { [creatorAccount]: dataJSON };
 
   widgetFiles.forEach((file) => {
     let fileContent = fs.readFileSync(file, "utf8");
@@ -207,7 +248,7 @@ function generateDevJson(workspaceFolder) {
     const windowsWidgetPath = widgetPath.replaceAll("/", ".");
     const linuxWidgetPath = widgetPath.split(path.sep).join(".");
 
-    let widgetKey = `${appConfig.creatorAccount}/widget/${
+    let widgetKey = `${creatorAccount}/widget/${
       process.platform === "win32" ? windowsWidgetPath : linuxWidgetPath
     }`;
     console.log(widgetKey);
@@ -246,15 +287,15 @@ function serveDevJson() {
     const workspaceFolders = fs.readdirSync("./workspaces");
 
     for (const workspaceFolder of workspaceFolders) {
-      let appDevJson = generateDevJson(workspaceFolder);
-      devJson.components = { ...devJson.components, ...appDevJson.components };
-      devJson.data = { ...devJson.data, ...appDevJson.data };
+      let workspaceDevJson = generateDevJson(workspaceFolder);
+      devJson.components = { ...devJson.components, ...workspaceDevJson.components };
+      devJson.data = { ...devJson.data, ...workspaceDevJson.data };
     }
 
     res.json(devJson);
   });
 
-  const port = process.env.BOS_PORT || 4040; 
+  const port = process.env.BOS_PORT || 4040;
 
   app.listen(port, "127.0.0.1", () => {
     console.log(
@@ -268,13 +309,13 @@ function serveDevJson() {
 }
 
 // TODO: need tests
-function deployApp(workspaceFolder) {
+function deployWorkspace(workspaceFolder) {
   const config = readBosConfig(workspaceFolder);
-  const creatorAccount = config.creatorAccount;
+  let creatorAccount = getNetworkAccount(config.creatorAccount);
 
   if (!creatorAccount) {
     console.error(
-      `App account is not defined for ${workspaceFolder}. Skipping deployment.`
+      `Creator account is not defined for ${workspaceFolder}. Skipping deployment.`
     );
     return;
   }
@@ -300,17 +341,19 @@ function deployApp(workspaceFolder) {
     }).toString();
     console.log(`Deployed ${workspaceFolder}`);
   } catch (error) {
-    console.error(`Error deploying ${workspaceFolder} widgets:\n${error.message}`);
+    console.error(
+      `Error deploying ${workspaceFolder} widgets:\n${error.message}`
+    );
   }
 }
 
 function uploadData(workspaceFolder) {
   const config = readBosConfig(workspaceFolder);
-  const creatorAccount = config.creatorAccount;
+  let creatorAccount = getNetworkAccount(config.creatorAccount);
 
   if (!creatorAccount) {
     console.error(
-      `App account is not defined for ${workspaceFolder}. Skipping data upload.`
+      `Creator account is not defined for ${workspaceFolder}. Skipping data upload.`
     );
     return;
   }
@@ -356,7 +399,9 @@ function uploadData(workspaceFolder) {
     }).toString();
     console.log(`Uploaded data for ${workspaceFolder}`);
   } catch (error) {
-    console.error(`Error uploading data for ${workspaceFolder}:\n${error.message}`);
+    console.error(
+      `Error uploading data for ${workspaceFolder}:\n${error.message}`
+    );
   }
 }
 
@@ -366,7 +411,10 @@ function workspaceSelectorCLI(callback) {
   // Check if workspaceFolder is provided as a command line argument
   const specifiedworkspaceFolder = process.argv[2];
 
-  if (specifiedworkspaceFolder && workspaceFolders.includes(specifiedworkspaceFolder)) {
+  if (
+    specifiedworkspaceFolder &&
+    workspaceFolders.includes(specifiedworkspaceFolder)
+  ) {
     callback(specifiedworkspaceFolder);
     return;
   }
@@ -376,15 +424,15 @@ function workspaceSelectorCLI(callback) {
     output: process.stdout,
   });
 
-  console.log("Please select an app:");
+  console.log("Please select a workspace:");
   workspaceFolders.forEach((folder, index) => {
     console.log(`${index + 1}. ${folder}`);
   });
 
-  rl.question("Enter the number of the app you want to use: ", (answer) => {
-    const appIndex = parseInt(answer, 10) - 1;
-    if (appIndex >= 0 && appIndex < workspaceFolders.length) {
-      const workspaceFolder = workspaceFolders[appIndex];
+  rl.question("Enter the number of the workspace you want to use: ", (answer) => {
+    const workspaceIndex = parseInt(answer, 10) - 1;
+    if (workspaceIndex >= 0 && workspaceIndex < workspaceFolders.length) {
+      const workspaceFolder = workspaceFolders[workspaceIndex];
       callback(workspaceFolder);
       rl.close();
     } else {
@@ -395,7 +443,7 @@ function workspaceSelectorCLI(callback) {
 }
 
 function deployCLI() {
-  workspaceSelectorCLI(deployApp);
+  workspaceSelectorCLI(deployWorkspace);
 }
 
 function uploadDataCLI() {
@@ -436,6 +484,7 @@ async function build() {
 // exports
 module.exports = {
   readBosConfig,
+  getNetworkAccount,
   processCommentCommands,
   importModules,
   shouldSkipFile,
@@ -447,7 +496,7 @@ module.exports = {
   build,
   dev,
   deployCLI,
-  deployApp,
+  deployWorkspace,
   uploadDataCLI,
   uploadData,
 };
